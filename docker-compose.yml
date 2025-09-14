@@ -3,6 +3,7 @@ version: "3.9"
 services:
   bot:
     build: .
+    restart: always
     volumes:
       - ./appsettings.json:/usr/src/app/appsettings.json
       - ./chats.json:/usr/src/app/chats.json
