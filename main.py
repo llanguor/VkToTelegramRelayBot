@@ -179,7 +179,7 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
             text = str(channel_name + sender + ': ' + text)
 
-            if len(media)==0 and len(attachments)==0:
+            if len(media) == 0 and len(attachments) == 0 or len(media) != 0 and len(attachments) != 0:
                 tg_session.send_message(sub, text)
                 text = ""
 
@@ -187,9 +187,6 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                 media[0].caption = text
                 tg_session.send_media_group(sub, media=media)
                 text = ""
-
-            if len(documents) != 0:
-                tg_session.send_media_group(sub, media=documents)
 
             for attachment in attachments:
 
@@ -203,7 +200,10 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                     tg_session.send_document(sub, att_link)
 
                 elif att_type == 'other':
-                    tg_session.send_message(sub, att_link)
+                    if text!="":
+                        tg_session.send_message(sub, text)
+                        text = ""
+                    tg_session.send_message(sub, text+"\n" +att_link)
 
                 elif att_type == 'video':
                     tg_session.send_message(sub, text+"\nВидео\n" + att_link)
@@ -212,6 +212,9 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                 elif att_type == 'graffiti':
                     tg_session.send_message(sub, text+"\nГраффити\n " +att_link)
                     text = ""
+
+            if len(documents) != 0:
+                tg_session.send_media_group(sub, media=documents)
 
             logger.info(f"Send message {msg['text']} to {sub}")
 
