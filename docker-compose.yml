@@ -1,0 +1,10 @@
+version: "3.9"
+
+services:
+  bot:
+    build: .
+    volumes:
+      - ./appsettings.json:/usr/src/app/appsettings.json
+      - ./chats.json:/usr/src/app/chats.json
+      - ./chats_last_received.json:/usr/src/app/chats_last_received.json
+      - ./log.log:/usr/src/app/log.log

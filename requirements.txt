@@ -1,4 +1,5 @@
 pyTelegramBotAPI
 vk_api
-datetime
 Pillow
+requests
+loguru

@@ -1,3 +1,7 @@
 {
-  "vk_11111111": "1111111111"
+  "Chat": {
+    "source_type": "vk",
+    "source": "1111111111",
+    "subscribers": []
+  }
 }
