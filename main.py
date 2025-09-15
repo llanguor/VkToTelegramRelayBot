@@ -164,59 +164,61 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
             return
 
         attachments, media, documents, opened_documents, caption = get_message_attachments(msg)
+        if text and caption:
+            text += "\n"
+        text += caption
 
         for sub in subscribers:
-
-            channel_name = ""
-            if conversation_type!="user" and get_subscribes_count(sub)>1:
-                channel_name = get_channel_name_by_source(conversation_id) +" | "
-            if channel_name is None:
+            try:
                 channel_name = ""
+                if conversation_type!="user" and get_subscribes_count(sub)>1:
+                    channel_name = get_channel_name_by_source(conversation_id) +" | "
+                if channel_name is None:
+                    channel_name = ""
 
-            if text and caption:
-                text+="\n"
-            text += caption
+                text_to_send = str(channel_name + sender + ': ' + text)
 
-            text = str(channel_name + sender + ': ' + text)
+                if len(media) == 0 and len(attachments) == 0 or len(media) != 0 and len(attachments) != 0:
+                    tg_session.send_message(sub, text_to_send)
+                    text_to_send = ""
 
-            if len(media) == 0 and len(attachments) == 0 or len(media) != 0 and len(attachments) != 0:
-                tg_session.send_message(sub, text)
-                text = ""
+                if len(media) != 0:
+                    media[0].caption = text_to_send
+                    tg_session.send_media_group(sub, media=media)
+                    text_to_send = ""
 
-            if len(media) != 0:
-                media[0].caption = text
-                tg_session.send_media_group(sub, media=media)
-                text = ""
+                for attachment in attachments:
 
-            for attachment in attachments:
+                    att_type = attachment.get('type')
+                    att_link = attachment.get('link')
 
-                att_type = attachment.get('type')
-                att_link = attachment.get('link')
+                    if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
+                        if text_to_send!="":
+                            tg_session.send_message(sub, text_to_send)
+                            text_to_send = ""
+                        tg_session.send_document(sub, att_link)
 
-                if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
-                    if text!="":
-                        tg_session.send_message(sub, text)
-                        text = ""
-                    tg_session.send_document(sub, att_link)
+                    elif att_type == 'other':
+                        if text_to_send!="":
+                            tg_session.send_message(sub, text_to_send)
+                            text_to_send = ""
+                        tg_session.send_message(sub, text_to_send+"\n" +att_link)
 
-                elif att_type == 'other':
-                    if text!="":
-                        tg_session.send_message(sub, text)
-                        text = ""
-                    tg_session.send_message(sub, text+"\n" +att_link)
+                    elif att_type == 'video':
+                        tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link)
+                        text_to_send = ""
 
-                elif att_type == 'video':
-                    tg_session.send_message(sub, text+"\nВидео\n" + att_link)
-                    text = ""
+                    elif att_type == 'graffiti':
+                        tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link)
+                        text_to_send = ""
 
-                elif att_type == 'graffiti':
-                    tg_session.send_message(sub, text+"\nГраффити\n " +att_link)
-                    text = ""
+                    if len(documents) != 0:
+                        tg_session.send_media_group(sub, media=documents)
 
-            if len(documents) != 0:
-                tg_session.send_media_group(sub, media=documents)
+                    logger.info(f"Send message {msg['text']} to {sub}")
 
-            logger.info(f"Send message {msg['text']} to {sub}")
+            except Exception as ex:
+                logger.error(f"Error while sending {msg['text']} to {sub}: {ex}")
 
     finally:
 
