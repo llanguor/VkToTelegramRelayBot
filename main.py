@@ -49,7 +49,7 @@ logger.info(f"Successfully login in tg")
 def start(message):
     try:
         logger.info(f"User with id {message.chat.id} called /start command")
-        show_chats_keyboard(message, "Привет! Я бот для рассылок с ВК. Выберите чат:")
+        show_chats_keyboard(message, "Привет! Я бот для рассылок с ВК. Выберите чат для подписки или отписки:")
 
     except Exception as e:
         logger.error(f"Error in the /start function for the user with ID {message.chat.id}: {e}")
@@ -59,7 +59,7 @@ def start(message):
 def subscribe(message):
     try:
         logger.info(f"User with id {message.chat.id} called /subscribe command")
-        show_chats_keyboard(message, "Выберите чат:")
+        show_chats_keyboard(message, "Выберите чат для подписки или отписки:")
 
     except Exception as e:
         logger.error(f"Error in the /subscribe function for the user with ID {message.chat.id}: {e}")
