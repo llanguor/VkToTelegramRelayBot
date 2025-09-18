@@ -212,10 +212,10 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                         tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link)
                         text_to_send = ""
 
-                    if len(documents) != 0:
-                        tg_session.send_media_group(sub, media=documents)
+                if len(documents) != 0:
+                    tg_session.send_media_group(sub, media=documents)
 
-                    logger.info(f"Send message {msg['text']} to {sub}")
+                logger.info(f"Send message {msg['text']} to {sub}")
 
             except Exception as ex:
                 logger.error(f"Error while sending {msg['text']} to {sub}: {ex}")
