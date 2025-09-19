@@ -98,13 +98,18 @@ def handle_switch(call):
 
 def vk_thread():
 
+
+    conversations = vk.messages.getConversations(count=5)['items']
+    conversations = [
+        conv for conv in conversations
+        if is_conversation_id_exists(conv['conversation']['peer']['id'])
+    ]
+
     while True:
 
         try:
 
             vk.account.setOnline()
-
-            conversations = vk.messages.getConversations(count=10)['items']
 
             for conv in conversations:
 
@@ -112,17 +117,15 @@ def vk_thread():
                 conversation_id = peer['id']
                 conversation_type = peer['type']
 
-                if not is_conversation_id_exists(conversation_id):
-                    continue
-
                 last_received = get_last_received_message_id(conversation_id)
                 if last_received == -1:
                     messages = vk.messages.getHistory(peer_id=conversation_id, count=1)['items']
                     set_last_received_message_id(conversation_id, messages[0]['id'])
                 else:
-                    messages = vk.messages.getHistory(peer_id=conversation_id, count=20)['items']
+                    messages = vk.messages.getHistory(peer_id=conversation_id, count=3)['items']
+                    if len(messages) == 0 or messages[0]['id'] <= last_received:
+                        continue
                     messages = [m for m in messages if m['id'] > last_received]
-
 
                 for msg in reversed(messages):
                     logger.info(f"Received message {msg['text']}({msg['id']}) from conversation {conversation_id}")
@@ -166,19 +169,20 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
             text += "\n"
         text += caption
 
-        get_forward_messages_caption(msg)
+        forward_caption = escape_markdown(sender + ': ') + get_forward_messages_caption(msg)
 
         for sub in subscribers:
             try:
-                channel_name = ""
+                text_to_send = sender+': '+text
                 if data["add_group_name_to_message"] and conversation_type!="user" and get_subscribes_count(sub)>1:
                     channel_name = get_channel_name_by_source(conversation_id) +" | "
-                if channel_name is None:
-                    channel_name = ""
+                    if channel_name is not None:
+                        text_to_send = channel_name + text_to_send
 
-                text_to_send = str(channel_name + sender + ': ' + text)
 
-                if len(media) == 0 and len(attachments) == 0 or len(media) != 0 and len(attachments) != 0:
+                if (len(text)!=0 and (
+                    len(media) == 0 and len(attachments) == 0 or
+                    len(media) != 0 and len(attachments) != 0)):
                     tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
                     text_to_send = ""
 
@@ -199,10 +203,8 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                         tg_session.send_document(sub, att_link, disable_notification=data['disable_notification'])
 
                     elif att_type == 'other':
-                        if text_to_send!="":
-                            tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
-                            text_to_send = ""
-                        tg_session.send_message(sub, text_to_send+"\n" +att_link, disable_notification=data['disable_notification'])
+                        tg_session.send_message(sub, text_to_send+"\n" + att_link, disable_notification=data['disable_notification'])
+                        text_to_send = ""
 
                     elif att_type == 'video':
                         tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=data['disable_notification'])
@@ -214,6 +216,9 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
                 if len(documents) != 0:
                     tg_session.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
+
+                if forward_caption!="":
+                    tg_session.send_message(sub, forward_caption, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
 
                 logger.info(f"Send message {msg['text']} to {sub}")
 
@@ -232,29 +237,59 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
         remove_download_cache()
 
 def get_forward_messages_caption(msg):
-    return None
+
+    
+    fwlist = get_forward_messages_list(msg)
+    #rpllist = get_reply_messages_list(msg)
+    #all_msg = fwlist + rpllist
+
+    if len(fwlist) == 0:
+        return ""
+
+    text =  f"\nПересланные сообщения\n"
+    for m in fwlist:
+        text += f">{m['sender']}: {m['text']}\n\n"
+
+    return text
 
 def get_forward_messages_list(msg):
 
-    if not(msg.get('fwd_messages')):
-        return None
+    fwd_msg = msg.get('fwd_messages')
+    if not fwd_msg:
+        return []
 
     fwd_list = []
-    fwd_msg = msg.get('fwd_messages')
-
-    while fwd_msg is not None:
+    for fwd in fwd_msg:
         fwd_list.append(
             {
-                'user_name': get_sender_name(fwd_msg[0]),
-                'body': fwd_msg[0].get('text')
+                'sender': get_sender_name(fwd),
+                'text': fwd.get('text')
             }
         )
-
-        fwd_msg = fwd_msg[0].get('fwd_messages')
-        #checkAttachments( fwdMsg[0], idd )
+        #attachments
 
     return fwd_list
 
+
+def get_reply_messages_list(msg):
+
+    fwd_msg = msg.get('reply_message')
+    if not fwd_msg:
+        return []
+
+    fwd_list = []
+    while fwd_msg is not None:
+        fwd_list.append(
+            {
+                'sender': get_sender_name(fwd_msg[0]),
+                'text': fwd_msg.get('text')
+            }
+        )
+
+        fwd_msg = fwd_msg.get('reply_message')
+        #checkAttachments( fwdMsg[0], idd )
+
+    return fwd_list
 
 def get_sender_name(msg):
     if int(msg.get('from_id')) < 0:
