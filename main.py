@@ -169,11 +169,13 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
             text += "\n"
         text += caption
 
-        forward_caption = escape_markdown(sender + ': ') + get_forward_messages_caption(msg)
+        text_caption = sender + ': ' + text
+        forward = get_forward_messages_caption(msg)
+        forward_caption = escape_markdown(sender + ': ') + forward
 
         for sub in subscribers:
             try:
-                text_to_send = sender+': '+text
+                text_to_send = text_caption
                 if data["add_group_name_to_message"] and conversation_type!="user" and get_subscribes_count(sub)>1:
                     channel_name = get_channel_name_by_source(conversation_id) +" | "
                     if channel_name is not None:
@@ -217,7 +219,7 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                 if len(documents) != 0:
                     tg_session.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
 
-                if forward_caption!="":
+                if forward!="":
                     tg_session.send_message(sub, forward_caption, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
 
                 logger.info(f"Send message {msg['text']} to {sub}")
@@ -236,28 +238,23 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
         opened_documents.clear()
         remove_download_cache()
 
+
 def get_forward_messages_caption(msg):
 
     
     fwlist = get_forward_messages_list(msg)
-    #rpllist = get_reply_messages_list(msg)
-    #all_msg = fwlist + rpllist
-
     if len(fwlist) == 0:
         return ""
 
     text =  f"\nПересланные сообщения\n"
     for m in fwlist:
-        text += f">{m['sender']}: {m['text']}\n\n"
+        text += f">{escape_markdown(m['sender'])}: {escape_markdown(m['text'])}\n\n"
 
     return text
 
 def get_forward_messages_list(msg):
 
     fwd_msg = msg.get('fwd_messages')
-    if not fwd_msg:
-        return []
-
     fwd_list = []
     for fwd in fwd_msg:
         fwd_list.append(
@@ -268,36 +265,28 @@ def get_forward_messages_list(msg):
         )
         #attachments
 
-    return fwd_list
-
-
-def get_reply_messages_list(msg):
-
-    fwd_msg = msg.get('reply_message')
-    if not fwd_msg:
-        return []
-
-    fwd_list = []
-    while fwd_msg is not None:
+    reply_message = msg.get('reply_message')
+    if reply_message is not None:
         fwd_list.append(
             {
-                'sender': get_sender_name(fwd_msg[0]),
-                'text': fwd_msg.get('text')
+                'sender': get_sender_name_from_id(reply_message['from_id']),
+                'text': reply_message['text']
             }
         )
 
-        fwd_msg = fwd_msg.get('reply_message')
-        #checkAttachments( fwdMsg[0], idd )
-
     return fwd_list
+
+
 
 def get_sender_name(msg):
     if int(msg.get('from_id')) < 0:
         return None
     else:
-        dn = vk.users.get(user_ids = msg.get('from_id'))
-        name = str (dn[0]['first_name'] + ' ' + dn[0]['last_name'])
-    return name
+        return get_sender_name_from_id(msg.get('from_id'))
+
+def get_sender_name_from_id(id):
+    dn = vk.users.get(user_ids = id)
+    return str (dn[0]['first_name'] + ' ' + dn[0]['last_name'])
 
 
 def get_message_attachments(msg):
