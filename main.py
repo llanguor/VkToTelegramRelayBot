@@ -240,15 +240,24 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
 
 def get_forward_messages_caption(msg):
-
-    
     fwlist = get_forward_messages_list(msg)
     if len(fwlist) == 0:
         return ""
 
-    text =  f"\nПересланные сообщения\n"
+    #text =  f"\nПересланные сообщения\n"
+    text = ""
+    is_group = True
+
     for m in fwlist:
-        text += f">{escape_markdown(m['sender'])}: {escape_markdown(m['text'])}\n\n"
+        forward_sender = escape_markdown(m['sender'])
+        forward_text = escape_markdown(m['text'])
+        if forward_text!='':
+            is_group = False
+
+        text += f">{forward_sender}: {forward_text}\n\n"
+
+    if is_group:
+        text = f"Группа пересланных сообщений\n"
 
     return text
 
