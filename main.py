@@ -136,6 +136,8 @@ def vk_thread():
                     try:
                         send_message_to_telegram(conversation_id, conversation_type, msg)
                     finally:
+                        if data['mark_messages_as_read']:
+                            vk.messages.markAsRead(messages_ids=[msg['id']], peer_id=conversation_id)
                         set_last_received_message_id(conversation_id, msg['id'])
 
             time.sleep(data["pause_between_message_checks"])
