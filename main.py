@@ -171,22 +171,28 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
         text_caption = sender + ': ' + text
         forward = get_forward_messages_caption(msg)
-        forward_caption = escape_markdown(sender + ': ') + forward
 
         for sub in subscribers:
             try:
                 text_to_send = text_caption
+                forward_to_send = forward
                 if data["add_group_name_to_message"] and conversation_type!="user" and get_subscribes_count(sub)>1:
                     channel_name = get_channel_name_by_source(conversation_id) +" | "
                     if channel_name is not None:
                         text_to_send = channel_name + text_to_send
 
-
                 if (len(text)!=0 and (
                     len(media) == 0 and len(attachments) == 0 or
                     len(media) != 0 and len(attachments) != 0)):
-                    tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
+
+                    if forward_to_send != "":
+                        text_to_send = escape_markdown(text_to_send) + "\n\n" + forward_to_send
+                        tg_session.send_message(sub, text_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
+                    else:
+                        tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
+
                     text_to_send = ""
+                    forward_to_send = ""
 
                 if len(media) != 0:
                     media[0].caption = text_to_send
@@ -219,8 +225,9 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                 if len(documents) != 0:
                     tg_session.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
 
-                if forward!="":
-                    tg_session.send_message(sub, forward_caption, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
+                if forward_to_send!="":
+                    forward_to_send = escape_markdown(sender) + ':\n' + forward_to_send
+                    tg_session.send_message(sub, forward_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
 
                 logger.info(f"Send message {msg['text']} to {sub}")
 
