@@ -13,6 +13,8 @@ from chats_handler import change_subscription, load_data, save_data, is_channel_
 from chats_last_received_handler import get_last_received_message_id, set_last_received_message_id
 from logger import get_logger
 
+MARKDOWN_CHARS = ['\\', '_', '*', '[', ']', '(', ')', '~', '`', '>', '<', '&','#', '+', '-', '=', '|', '{', '}', '.', '!']
+
 logger = get_logger()
 
 with open("appsettings.json", "r", encoding="utf-8") as f:
@@ -96,21 +98,13 @@ def handle_switch(call):
 
 def vk_thread():
 
-    is_multibots_enabled = data["allow_multiple_tg_bots"]
-
     while True:
 
         try:
 
             vk.account.setOnline()
 
-            if is_multibots_enabled:
-                conversations = vk.messages.getConversations(
-                    count=10)['items']
-            else:
-                conversations = vk.messages.getConversations(
-                    filter='unread',
-                    count=10)['items']
+            conversations = vk.messages.getConversations(count=10)['items']
 
             for conv in conversations:
 
@@ -146,23 +140,33 @@ def vk_thread():
             logger.warning(f"Something wrong: {e}")
             continue
 
+
+def escape_markdown(text: str) -> str:
+    for char in MARKDOWN_CHARS:
+        text = text.replace(char, f'\\{char}')
+    return text
+
+
 def send_message_to_telegram(conversation_id, conversation_type, msg):
 
     opened_documents = []
     try:
 
-        subscribers = get_channel_subscribers(conversation_id)
-        sender = get_sender(msg)
-        text = msg['text']
-        disable_notification = data['disable_notification']
+        if msg.get('action'):
+            return
 
+        sender = get_sender_name(msg)
         if sender is None:
             return
+        subscribers = get_channel_subscribers(conversation_id)
+        text = msg['text']
 
         attachments, media, documents, opened_documents, caption = get_message_attachments(msg)
         if text and caption:
             text += "\n"
         text += caption
+
+        get_forward_messages_caption(msg)
 
         for sub in subscribers:
             try:
@@ -175,12 +179,12 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                 text_to_send = str(channel_name + sender + ': ' + text)
 
                 if len(media) == 0 and len(attachments) == 0 or len(media) != 0 and len(attachments) != 0:
-                    tg_session.send_message(sub, text_to_send, disable_notification=disable_notification)
+                    tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
                     text_to_send = ""
 
                 if len(media) != 0:
                     media[0].caption = text_to_send
-                    tg_session.send_media_group(sub, media=media, disable_notification=disable_notification)
+                    tg_session.send_media_group(sub, media=media, disable_notification=data['disable_notification'])
                     text_to_send = ""
 
                 for attachment in attachments:
@@ -190,26 +194,26 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
                     if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
                         if text_to_send!="":
-                            tg_session.send_message(sub, text_to_send, disable_notification=disable_notification)
+                            tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
                             text_to_send = ""
-                        tg_session.send_document(sub, att_link, disable_notification=disable_notification)
+                        tg_session.send_document(sub, att_link, disable_notification=data['disable_notification'])
 
                     elif att_type == 'other':
                         if text_to_send!="":
-                            tg_session.send_message(sub, text_to_send, disable_notification=disable_notification)
+                            tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
                             text_to_send = ""
-                        tg_session.send_message(sub, text_to_send+"\n" +att_link, disable_notification=disable_notification)
+                        tg_session.send_message(sub, text_to_send+"\n" +att_link, disable_notification=data['disable_notification'])
 
                     elif att_type == 'video':
-                        tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=disable_notification)
+                        tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=data['disable_notification'])
                         text_to_send = ""
 
                     elif att_type == 'graffiti':
-                        tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=disable_notification)
+                        tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=data['disable_notification'])
                         text_to_send = ""
 
                 if len(documents) != 0:
-                    tg_session.send_media_group(sub, media=documents, disable_notification=disable_notification)
+                    tg_session.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
 
                 logger.info(f"Send message {msg['text']} to {sub}")
 
@@ -227,8 +231,32 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
         opened_documents.clear()
         remove_download_cache()
 
+def get_forward_messages_caption(msg):
+    return None
 
-def get_sender(msg):
+def get_forward_messages_list(msg):
+
+    if not(msg.get('fwd_messages')):
+        return None
+
+    fwd_list = []
+    fwd_msg = msg.get('fwd_messages')
+
+    while fwd_msg is not None:
+        fwd_list.append(
+            {
+                'user_name': get_sender_name(fwd_msg[0]),
+                'body': fwd_msg[0].get('text')
+            }
+        )
+
+        fwd_msg = fwd_msg[0].get('fwd_messages')
+        #checkAttachments( fwdMsg[0], idd )
+
+    return fwd_list
+
+
+def get_sender_name(msg):
     if int(msg.get('from_id')) < 0:
         return None
     else:
@@ -238,7 +266,7 @@ def get_sender(msg):
 
 
 def get_message_attachments(msg):
-    attachList = []
+    attach_list = []
     media = []
     documents = []
     caption = ""
@@ -249,20 +277,20 @@ def get_message_attachments(msg):
     for att in msg['attachments'][0:]:
 
         attachments = None
-        attType = att.get('type')
-        attachment = att[attType]
+        att_type = att.get('type')
+        attachment = att[att_type]
 
-        if attType == 'photo' :
+        if att_type == 'photo' :
             sizes = attachment.get('sizes', [])
             media.append(InputMediaPhoto(sizes[-1]['url']))
             continue
 
-        elif attType == 'doc':
-            docType = attachment.get('type')
-            if docType not in [3, 4, 5]:
-                attType = 'other'
+        elif att_type == 'doc':
+            doc_type = attachment.get('type')
+            if doc_type not in [3, 4, 5]:
+                att_type = 'other'
 
-            if (docType in [1, 2, 5, 6, 7, 8]) and attachment.get('url'):
+            if (doc_type in [1, 2, 5, 6, 7, 8]) and attachment.get('url'):
                 file_path = download_file(attachment['url'], attachment['title'])
                 if file_path:
                     document = open(file_path, 'rb')
@@ -273,41 +301,41 @@ def get_message_attachments(msg):
             attachments = attachment['url']
 
 
-        elif attType == 'sticker':  # Проверка на стикеры:
+        elif att_type == 'sticker':  # Проверка на стикеры:
             caption = "Стикер"
             break
 
-        elif attType == 'audio':
+        elif att_type == 'audio':
             caption = "Аудио-файл"
 
-        elif attType == 'audio_message':
+        elif att_type == 'audio_message':
             attachments = attachment.get('link_ogg')
 
-        elif attType == 'video':
-            ownerId = str(attachment.get('owner_id'))
-            videoId = str(attachment.get('id'))
-            accesskey = str(attachment.get('access_key'))
+        elif att_type == 'video':
+            owner_id = str(attachment.get('owner_id'))
+            video_id = str(attachment.get('id'))
+            access_key = str(attachment.get('access_key'))
 
-            fullURL = str(ownerId + '_' + videoId + '_' + accesskey)
-            attachments = vk.video.get(videos=fullURL)['items'][0].get('player')
+            full_url = str(owner_id + '_' + video_id + '_' + access_key)
+            attachments = vk.video.get(videos=full_url)['items'][0].get('player')
 
-        elif attType == 'graffiti':
-            attType = 'graffiti'
+        elif att_type == 'graffiti':
+            att_type = 'graffiti'
             attachments = attachment.get('url')
 
-        elif attType == 'link':
-            attType = 'other'
+        elif att_type == 'link':
+            att_type = 'other'
             attachments = attachment.get('url')
 
-        elif attType == 'wall':
-            attType = 'other'
+        elif att_type == 'wall':
+            att_type = 'other'
             attachments = 'https://vk.com/wall'
             from_id = str(attachment.get('from_id'))
             post_id = str(attachment.get('id'))
             attachments += from_id + '_' + post_id
 
-        elif attType == 'wall_reply':
-            attType = 'other'
+        elif att_type == 'wall_reply':
+            att_type = 'other'
             attachments = 'https://vk.com/wall'
             owner_id = str(attachment.get('owner_id'))
             reply_id = str(attachment.get('id'))
@@ -315,8 +343,8 @@ def get_message_attachments(msg):
             attachments += owner_id + '_' + post_id
             attachments += '?reply=' + reply_id
 
-        elif attType == 'poll':
-            attType = 'other'
+        elif att_type == 'poll':
+            att_type = 'other'
             attachments = 'https://vk.com/poll'
             owner_id = str(attachment.get('owner_id'))
             poll_id = str(attachment.get('id'))
@@ -326,9 +354,9 @@ def get_message_attachments(msg):
             attachments = None
 
         if attachments is not None:
-            attachList.append({'type': attType, 'link': attachments})
+            attach_list.append({'type': att_type, 'link': attachments})
 
-    return attachList, media, documents, opened_documents, caption
+    return attach_list, media, documents, opened_documents, caption
 
 
 def remove_download_cache():
