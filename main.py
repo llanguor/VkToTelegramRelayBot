@@ -68,12 +68,12 @@ def show_chats_keyboard(message, text):
         tg_session.send_message(
             message.chat.id,
             text,
-            reply_markup=keyboard)
+            reply_markup=keyboard, disable_notification=True)
 
     except:
         tg_session.send_message(
             message.chat.id, "Что-то пошло не так. Обратитесь к администратору бота",
-            reply_markup=keyboard)
+            reply_markup=keyboard, disable_notification=True)
 
 
 @tg_session.callback_query_handler(func=lambda call: call.data.startswith("subscribe_"))
@@ -87,9 +87,9 @@ def handle_switch(call):
         is_subscrubed = change_subscription(channel_name, output_id)
 
         if is_subscrubed:
-            tg_session.send_message(call.message.chat.id, f"Вы подписались на чат: {channel_name}")
+            tg_session.send_message(call.message.chat.id, f"Вы подписались на чат: {channel_name}", disable_notification=True)
         else:
-            tg_session.send_message(call.message.chat.id, f"Вы отписались от чата: {channel_name}")
+            tg_session.send_message(call.message.chat.id, f"Вы отписались от чата: {channel_name}", disable_notification=True)
 
     except Exception as e:
         logger.error(f"Error in callback handler for user {output_id}: {e}")
@@ -154,6 +154,7 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
         subscribers = get_channel_subscribers(conversation_id)
         sender = get_sender(msg)
         text = msg['text']
+        disable_notification = data['disable_notification']
 
         if sender is None:
             return
@@ -166,7 +167,7 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
         for sub in subscribers:
             try:
                 channel_name = ""
-                if conversation_type!="user" and get_subscribes_count(sub)>1:
+                if data["add_group_name_to_message"] and conversation_type!="user" and get_subscribes_count(sub)>1:
                     channel_name = get_channel_name_by_source(conversation_id) +" | "
                 if channel_name is None:
                     channel_name = ""
@@ -174,12 +175,12 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
                 text_to_send = str(channel_name + sender + ': ' + text)
 
                 if len(media) == 0 and len(attachments) == 0 or len(media) != 0 and len(attachments) != 0:
-                    tg_session.send_message(sub, text_to_send)
+                    tg_session.send_message(sub, text_to_send, disable_notification=disable_notification)
                     text_to_send = ""
 
                 if len(media) != 0:
                     media[0].caption = text_to_send
-                    tg_session.send_media_group(sub, media=media)
+                    tg_session.send_media_group(sub, media=media, disable_notification=disable_notification)
                     text_to_send = ""
 
                 for attachment in attachments:
@@ -189,26 +190,26 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
                     if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
                         if text_to_send!="":
-                            tg_session.send_message(sub, text_to_send)
+                            tg_session.send_message(sub, text_to_send, disable_notification=disable_notification)
                             text_to_send = ""
-                        tg_session.send_document(sub, att_link)
+                        tg_session.send_document(sub, att_link, disable_notification=disable_notification)
 
                     elif att_type == 'other':
                         if text_to_send!="":
-                            tg_session.send_message(sub, text_to_send)
+                            tg_session.send_message(sub, text_to_send, disable_notification=disable_notification)
                             text_to_send = ""
-                        tg_session.send_message(sub, text_to_send+"\n" +att_link)
+                        tg_session.send_message(sub, text_to_send+"\n" +att_link, disable_notification=disable_notification)
 
                     elif att_type == 'video':
-                        tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link)
+                        tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=disable_notification)
                         text_to_send = ""
 
                     elif att_type == 'graffiti':
-                        tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link)
+                        tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=disable_notification)
                         text_to_send = ""
 
                 if len(documents) != 0:
-                    tg_session.send_media_group(sub, media=documents)
+                    tg_session.send_media_group(sub, media=documents, disable_notification=disable_notification)
 
                 logger.info(f"Send message {msg['text']} to {sub}")
 
