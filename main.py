@@ -7,25 +7,13 @@ import json
 import vk_api
 import telebot
 import threading
-from loguru import logger
 from telebot import types
 from telebot.types import InputMediaPhoto, InputMediaDocument
-
+from logger import get_logger
 from chats_handler import change_subscription, load_data, save_data, is_channel_exists, is_conversation_id_exists, get_channel_subscribers, get_subscribes_count, get_channel_name_by_source
 from chats_last_received_handler import get_last_received_message_id, set_last_received_message_id
 
-logger.configure(handlers=[{
-        "sink": sys.stderr,
-        "format": "{time:HH:mm:ss} | {function} | <level>{message}</level>"
-    },
-    {
-        "sink": "log.log",
-        "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {function} | {message}",
-        "rotation": "10 MB",
-        "retention": "7 days"
-    }]
-)
-
+logger = get_logger()
 logger.info(f"Program is running")
 
 with open("appsettings.json", "r", encoding="utf-8") as f:

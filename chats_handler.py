@@ -2,21 +2,12 @@ import threading
 import sys
 from loguru import logger
 from json_io import save_data, load_data
+from logger import get_logger
 
 FILE = "chats.json"
 lock = threading.Lock()
 
-logger.configure(handlers=[{
-        "sink": sys.stderr,
-        "format": "{time:HH:mm:ss} | {function} | <level>{message}</level>"
-    },
-    {
-        "sink": "logger.log",
-        "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {function} | {message}",
-        "rotation": "10 MB",
-        "retention": "7 days"
-    }]
-)
+logger = get_logger()
 
 
 def is_channel_exists(channel_id):
