@@ -26,7 +26,6 @@ def get_channel_subscribers(source_id):
     return []
 
 def change_subscription(channel_id, chat_id):
-    logger.info(f"Try to change subscription for chat with id {chat_id} to channel {channel_id}")
     chat_id = str(chat_id)
 
     with lock:
@@ -34,7 +33,7 @@ def change_subscription(channel_id, chat_id):
         global data
 
         if channel_id not in data:
-            logger.error(f"This channel is not exists: {channel_id}")
+            logger.error(f"User with chat id {chat_id} can't subscribe to {channel_id}: this channel is not exists: {channel_id}")
             raise ValueError(f"This channel is not exists: {channel_id}")
 
         if chat_id not in data[channel_id]["subscribers"]:

@@ -96,15 +96,22 @@ def handle_switch(call):
         logger.error(f"Error in callback handler for user {output_id}: {e}")
 
 def vk_thread():
+
+    is_multibots_enabled = data["allow_multiple_tg_bots"]
+
     while True:
 
         try:
 
             vk.account.setOnline()
 
-            conversations = vk.messages.getConversations(
-                filter='unread',
-                count=10)['items']
+            if is_multibots_enabled:
+                conversations = vk.messages.getConversations(
+                    count=10)['items']
+            else:
+                conversations = vk.messages.getConversations(
+                    filter='unread',
+                    count=10)['items']
 
             for conv in conversations:
 
@@ -126,14 +133,13 @@ def vk_thread():
 
                 for msg in reversed(messages):
                     logger.info(f"Received message {msg['text']}({msg['id']}) from conversation {conversation_id}")
-                    vk.messages.markAsRead(messages_ids=[msg['id']], peer_id=conversation_id)
 
                     try:
                         send_message_to_telegram(conversation_id, conversation_type, msg)
                     finally:
                         set_last_received_message_id(conversation_id, msg['id'])
 
-            time.sleep(1)
+            time.sleep(data["pause_between_message_checks"])
 
         except BaseException as e:
             logger.warning(f"Something wrong: {e}")
@@ -325,7 +331,6 @@ def get_message_attachments(msg):
 
 def remove_download_cache():
 
-    logger.info(f"Download cache cleared")
     files = glob.glob(os.path.join("downloads", "*"))
     for f in files:
         try:
@@ -339,25 +344,22 @@ def download_file(url, filename=None):
 
 
     try:
-        logger.info(f"Downloading file {url}")
 
         save_dir = "downloads"
         os.makedirs(save_dir, exist_ok=True)
 
         if filename is None:
-            filename = url.split("/")[-1].split("?")[0]  # отбрасываем параметры URL
+            filename = url.split("/")[-1].split("?")[0]
 
         file_path = os.path.join(save_dir, filename)
 
         response = requests.get(url, stream=True)
         response.raise_for_status()
 
-        # Сохраняем файл (перезаписываем, если существует)
         with open(file_path, "wb") as f:
             for chunk in response.iter_content(1024):
                 f.write(chunk)
 
-        logger.info(f"Downloading file is complete")
         return file_path
 
     except Exception as e:
