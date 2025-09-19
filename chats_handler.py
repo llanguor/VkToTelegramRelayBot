@@ -1,5 +1,4 @@
 import threading
-import sys
 from loguru import logger
 from json_io import save_data, load_data
 from logger import get_logger
