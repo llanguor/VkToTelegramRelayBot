@@ -1,7 +1,11 @@
 {
-  "ChatName": {
+  "Тестовая беседа": {
     "source_type": "vk",
-    "source": "1111111111",
-    "subscribers": []
+    "source": "2000000003",
+    "destinations": {
+      "bot1": [
+        "544810771"
+      ]
+    }
   }
 }

@@ -7,9 +7,11 @@ import json
 import vk_api
 import telebot
 import threading
+
+from PIL.BufrStubImagePlugin import register_handler
 from telebot import types
 from telebot.types import InputMediaPhoto, InputMediaDocument
-from chats_handler import change_subscription, load_data, save_data, is_channel_exists, is_conversation_id_exists, get_channel_subscribers, get_subscribes_count, get_channel_name_by_source
+from chats_handler import change_subscription, is_conversation_id_exists, get_channel_destinations, get_channel_name_by_source
 from chats_last_received_handler import get_last_received_message_id, set_last_received_message_id
 from logger import get_logger
 
@@ -23,78 +25,70 @@ with open("appsettings.json", "r", encoding="utf-8") as f:
 with open("chats.json", "r", encoding="utf-8") as f:
     chats = json.load(f)
 
+tg_sessions = {}
+bot_keyboards = {}
 vk_session = vk_api.VkApi(token=data["vk_token"])
 vk = vk_session.get_api()
 logger.info(f"Successfully login in vk")
 
-tg_session = telebot.TeleBot(data["tg_token"])
-logger.info(f"Successfully login in tg")
+
+def register_handlers(bot, botname):
+
+    @bot.message_handler(commands=['start'])
+    def start(message):
+        try:
+            logger.info(f"User with id {message.chat.id} called /start command")
+            show_chats_keyboard(message, "Привет! Я бот для рассылок с ВК. Выберите чат для подписки или отписки:")
+
+        except Exception as e:
+            logger.error(f"Error in the /start function for the user with ID {message.chat.id}: {e}")
 
 
+    @bot.message_handler(commands=['subscribe'])
+    def subscribe(message):
+        try:
+            logger.info(f"User with id {message.chat.id} called /subscribe command")
+            show_chats_keyboard(message, "Выберите чат для подписки или отписки:")
+
+        except Exception as e:
+            logger.error(f"Error in the /subscribe function for the user with ID {message.chat.id}: {e}")
 
 
+    def show_chats_keyboard(message, text):
 
-@tg_session.message_handler(commands=['start'])
-def start(message):
-    try:
-        logger.info(f"User with id {message.chat.id} called /start command")
-        show_chats_keyboard(message, "Привет! Я бот для рассылок с ВК. Выберите чат для подписки или отписки:")
+        keyboard = types.InlineKeyboardMarkup(row_width=2)
+        buttons = []
 
-    except Exception as e:
-        logger.error(f"Error in the /start function for the user with ID {message.chat.id}: {e}")
+        try:
 
+            bot.send_message(
+                message.chat.id,
+                text,
+                reply_markup=bot_keyboards[botname], disable_notification=True)
 
-@tg_session.message_handler(commands=['subscribe'])
-def subscribe(message):
-    try:
-        logger.info(f"User with id {message.chat.id} called /subscribe command")
-        show_chats_keyboard(message, "Выберите чат для подписки или отписки:")
-
-    except Exception as e:
-        logger.error(f"Error in the /subscribe function for the user with ID {message.chat.id}: {e}")
+        except:
+            bot.send_message(
+                message.chat.id, "Что-то пошло не так. Обратитесь к администратору бота",
+                reply_markup=keyboard, disable_notification=True)
 
 
-def show_chats_keyboard(message, text):
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("subscribe_"))
+    def handle_switch(call):
+        try:
+            channel_name = call.data[len("subscribe_"):]
+            output_id = call.message.chat.id
 
-    keyboard = types.InlineKeyboardMarkup(row_width=2)
-    buttons = []
+            bot.answer_callback_query(call.id)
+            is_subscrubed = change_subscription(channel_name, botname, output_id)
 
-    try:
+            if is_subscrubed:
+                bot.send_message(call.message.chat.id, f"Вы подписались на чат: {channel_name}", disable_notification=True)
+            else:
+                bot.send_message(call.message.chat.id, f"Вы отписались от чата: {channel_name}", disable_notification=True)
 
-        for chat_name in chats.keys():
-            keyboard.add(types.InlineKeyboardButton(
-                text=chat_name,
-                callback_data=f"subscribe_{chat_name}"
-            ))
+        except Exception as e:
+            logger.error(f"Error in callback handler for user {output_id}: {e}")
 
-        tg_session.send_message(
-            message.chat.id,
-            text,
-            reply_markup=keyboard, disable_notification=True)
-
-    except:
-        tg_session.send_message(
-            message.chat.id, "Что-то пошло не так. Обратитесь к администратору бота",
-            reply_markup=keyboard, disable_notification=True)
-
-
-@tg_session.callback_query_handler(func=lambda call: call.data.startswith("subscribe_"))
-def handle_switch(call):
-    try:
-        channel_name = call.data[len("subscribe_"):]
-        output_id = call.message.chat.id
-        print(f"Callback received: {output_id} to channel {channel_name}")
-
-        tg_session.answer_callback_query(call.id)
-        is_subscrubed = change_subscription(channel_name, output_id)
-
-        if is_subscrubed:
-            tg_session.send_message(call.message.chat.id, f"Вы подписались на чат: {channel_name}", disable_notification=True)
-        else:
-            tg_session.send_message(call.message.chat.id, f"Вы отписались от чата: {channel_name}", disable_notification=True)
-
-    except Exception as e:
-        logger.error(f"Error in callback handler for user {output_id}: {e}")
 
 def vk_thread():
 
@@ -149,8 +143,23 @@ def escape_markdown(text: str) -> str:
         text = text.replace(char, f'\\{char}')
     return text
 
-
 def send_message_to_telegram(conversation_id, conversation_type, msg):
+    destinations = get_channel_destinations(conversation_id)
+    for bot_name, chat_ids in destinations.items():
+        bot = tg_sessions.get(bot_name)
+        if not bot:
+            logger.warning(f"Bot {bot_name} не найден в tg_sessions")
+            continue
+
+        #если динамическое название: делать рассчет 1 или более не тут, а все же, внутри, для каждого конкретного чата
+        channel_name = ""
+        if data["add_group_name_to_message"] and conversation_type != "user":
+            channel_name = get_channel_name_by_source(conversation_id) +" | "
+
+
+        send_message_to_bot(bot, bot_name, chat_ids, channel_name, msg)
+
+def send_message_to_bot(bot, bot_name, subscribers, channel_name, msg):
 
     opened_documents = []
     try:
@@ -161,7 +170,7 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
         sender = get_sender_name(msg)
         if sender is None:
             return
-        subscribers = get_channel_subscribers(conversation_id)
+
         text = msg['text']
 
         attachments, media, documents, opened_documents, caption = get_message_attachments(msg)
@@ -169,17 +178,13 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
             text += "\n"
         text += caption
 
-        text_caption = sender + ': ' + text
+        text_caption = channel_name + sender + ': ' + text
         forward = get_forward_messages_caption(msg)
 
         for sub in subscribers:
             try:
                 text_to_send = text_caption
                 forward_to_send = forward
-                if data["add_group_name_to_message"] and conversation_type!="user" and get_subscribes_count(sub)>1:
-                    channel_name = get_channel_name_by_source(conversation_id) +" | "
-                    if channel_name is not None:
-                        text_to_send = channel_name + text_to_send
 
                 if (len(text)!=0 and (
                     len(media) == 0 and len(attachments) == 0 or
@@ -187,16 +192,16 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
                     if forward_to_send != "":
                         text_to_send = escape_markdown(text_to_send) + "\n\n" + forward_to_send
-                        tg_session.send_message(sub, text_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
+                        bot.send_message(sub, text_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
                     else:
-                        tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
+                        bot.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
 
                     text_to_send = ""
                     forward_to_send = ""
 
                 if len(media) != 0:
                     media[0].caption = text_to_send
-                    tg_session.send_media_group(sub, media=media, disable_notification=data['disable_notification'])
+                    bot.send_media_group(sub, media=media, disable_notification=data['disable_notification'])
                     text_to_send = ""
 
                 for attachment in attachments:
@@ -206,30 +211,30 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
                     if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
                         if text_to_send!="":
-                            tg_session.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
+                            bot.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
                             text_to_send = ""
-                        tg_session.send_document(sub, att_link, disable_notification=data['disable_notification'])
+                        bot.send_document(sub, att_link, disable_notification=data['disable_notification'])
 
                     elif att_type == 'other':
-                        tg_session.send_message(sub, text_to_send+"\n" + att_link, disable_notification=data['disable_notification'])
+                        bot.send_message(sub, text_to_send+"\n" + att_link, disable_notification=data['disable_notification'])
                         text_to_send = ""
 
                     elif att_type == 'video':
-                        tg_session.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=data['disable_notification'])
+                        bot.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=data['disable_notification'])
                         text_to_send = ""
 
                     elif att_type == 'graffiti':
-                        tg_session.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=data['disable_notification'])
+                        bot.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=data['disable_notification'])
                         text_to_send = ""
 
                 if len(documents) != 0:
-                    tg_session.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
+                    bot.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
 
                 if forward_to_send!="":
-                    forward_to_send = escape_markdown(sender) + ':\n' + forward_to_send
-                    tg_session.send_message(sub, forward_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
+                    forward_to_send = channel_name + escape_markdown(sender) + ':\n' + forward_to_send
+                    bot.send_message(sub, forward_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
 
-                logger.info(f"Send message {msg['text']} to {sub}")
+                logger.info(f"Send message {msg['text']} to {sub} from bot {bot_name}")
 
             except Exception as ex:
                 logger.error(f"Error while sending {msg['text']} to {sub}: {ex}")
@@ -437,12 +442,37 @@ def download_file(url, filename=None):
         return None
 
 
+def run_polling(bot, name):
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=1)
+        except Exception as e:
+            logger.error(f"Exception in polling {name}: {e}")
+
+
+
+for name, token in data["tg_tokens"].items():
+
+    bot = telebot.TeleBot(token)
+    tg_sessions[name] = bot
+    register_handlers(bot, name)
+
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    for chat_name, chat_data in chats.items():
+        destinations = chat_data.get("destinations", {})
+        if name in destinations:
+            keyboard.add(types.InlineKeyboardButton(
+                text=chat_name,
+                callback_data=f"subscribe_{chat_name}"
+            ))
+    bot_keyboards[name] = keyboard
+
+    logger.info(f"Successfully login in tg for {name}")
+
+
+for name, bot in tg_sessions.items():
+    threading.Thread(target=run_polling, args=(bot, name), daemon=True).start()
 
 threading.Thread(target=vk_thread, daemon=True).start()
 
-while True:
-    try:
-        tg_session.polling(none_stop=True, interval=1)
-    except Exception as e:
-        logger.error(f"Exception from main tg_session_polling: {e}")
-
+threading.Event().wait()
