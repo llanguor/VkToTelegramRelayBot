@@ -102,8 +102,8 @@ def vk_thread():
     while True:
 
         try:
-
-            vk.account.setOnline()
+            if data['vk_set_online_status']:
+                vk.account.setOnline()
 
             for conv in conversations:
 
