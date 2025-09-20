@@ -52,3 +52,12 @@ def get_channel_name_by_source(source_id: str):
     return None
 
 data = load_data(FILE)
+
+
+def get_subscribes_count(bot_name, chat_id):
+    count = 0
+    for chat in data.values():
+        destinations = chat.get("destinations", {})
+        if bot_name in destinations:
+            count += destinations[bot_name].count(chat_id)
+    return count

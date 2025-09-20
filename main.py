@@ -11,7 +11,7 @@ import threading
 from PIL.BufrStubImagePlugin import register_handler
 from telebot import types
 from telebot.types import InputMediaPhoto, InputMediaDocument
-from chats_handler import change_subscription, is_conversation_id_exists, get_channel_destinations, get_channel_name_by_source
+from chats_handler import change_subscription, is_conversation_id_exists, get_channel_destinations, get_subscribes_count, get_channel_name_by_source
 from chats_last_received_handler import get_last_received_message_id, set_last_received_message_id
 from logger import get_logger
 
@@ -151,15 +151,9 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
             logger.warning(f"Bot {bot_name} не найден в tg_sessions")
             continue
 
-        #если динамическое название: делать рассчет 1 или более не тут, а все же, внутри, для каждого конкретного чата
-        channel_name = ""
-        if data["add_group_name_to_message"] and conversation_type != "user":
-            channel_name = get_channel_name_by_source(conversation_id) +" | "
+        send_message_to_bot(bot, bot_name, chat_ids, msg, conversation_type, conversation_id)
 
-
-        send_message_to_bot(bot, bot_name, chat_ids, channel_name, msg)
-
-def send_message_to_bot(bot, bot_name, subscribers, channel_name, msg):
+def send_message_to_bot(bot, bot_name, subscribers, msg, conversation_type, conversation_id):
 
     opened_documents = []
     try:
@@ -178,13 +172,20 @@ def send_message_to_bot(bot, bot_name, subscribers, channel_name, msg):
             text += "\n"
         text += caption
 
-        text_caption = channel_name + sender + ': ' + text
+        text_caption = sender + ': ' + text
         forward = get_forward_messages_caption(msg)
 
         for sub in subscribers:
             try:
                 text_to_send = text_caption
                 forward_to_send = forward
+
+                channel_name = ""
+                if data["add_group_name_to_message"] and conversation_type != "user" and get_subscribes_count(bot_name, sub) > 1:
+                    channel_name = get_channel_name_by_source(conversation_id) + " | "
+                    if channel_name is not None:
+                        text_to_send = channel_name + text_to_send
+
 
                 if (len(text)!=0 and (
                     len(media) == 0 and len(attachments) == 0 or
@@ -231,7 +232,7 @@ def send_message_to_bot(bot, bot_name, subscribers, channel_name, msg):
                     bot.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
 
                 if forward_to_send!="":
-                    forward_to_send = channel_name + escape_markdown(sender) + ':\n' + forward_to_send
+                    forward_to_send = escape_markdown(channel_name + sender) + ':\n' + forward_to_send
                     bot.send_message(sub, forward_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
 
                 logger.info(f"Send message {msg['text']} to {sub} from bot {bot_name}")
