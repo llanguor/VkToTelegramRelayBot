@@ -192,7 +192,7 @@ def send_message_to_bot(bot, bot_name, subscribers, msg, conversation_type, conv
                     len(media) != 0 and len(attachments) != 0)):
 
                     if forward_to_send != "":
-                        text_to_send = escape_markdown(text_to_send) + "\n\n" + forward_to_send
+                        text_to_send = escape_markdown(text_to_send) + "\n" + forward_to_send
                         bot.send_message(sub, text_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
                     else:
                         bot.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
@@ -257,7 +257,6 @@ def get_forward_messages_caption(msg):
     if len(fwlist) == 0:
         return ""
 
-    #text =  f"\nПересланные сообщения\n"
     text = ""
     is_group = True
 
@@ -270,7 +269,7 @@ def get_forward_messages_caption(msg):
         text += f">{forward_sender}: {forward_text}\n\n"
 
     if is_group:
-        text = f"Группа пересланных сообщений\n"
+        text = f">Группа пересланных сообщений\n"
 
     return text
 
