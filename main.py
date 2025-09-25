@@ -7,7 +7,7 @@ import json
 import vk_api
 import telebot
 import threading
-
+import re
 from PIL.BufrStubImagePlugin import register_handler
 from telebot import types
 from telebot.types import InputMediaPhoto, InputMediaDocument
@@ -15,8 +15,8 @@ from chats_handler import change_subscription, is_conversation_id_exists, get_ch
 from chats_last_received_handler import get_last_received_message_id, set_last_received_message_id
 from logger import get_logger
 
+id_regex_mask = re.compile(r"\[([A-Za-z0-9]+)\|([^]\s]+)\]")
 MARKDOWN_CHARS = ['\\', '_', '*', '[', ']', '(', ')', '~', '`', '>', '<', '&','#', '+', '-', '=', '|', '{', '}', '.', '!']
-
 logger = get_logger()
 
 with open("appsettings.json", "r", encoding="utf-8") as f:
@@ -143,6 +143,9 @@ def escape_markdown(text: str) -> str:
         text = text.replace(char, f'\\{char}')
     return text
 
+def escape_user_id_vk_mask(text):       #[id12134|@user] => @user
+    return id_regex_mask.sub(r"\2", text)
+
 def send_message_to_telegram(conversation_id, conversation_type, msg):
     destinations = get_channel_destinations(conversation_id)
     for bot_name, chat_ids in destinations.items():
@@ -165,7 +168,7 @@ def send_message_to_bot(bot, bot_name, subscribers, msg, conversation_type, conv
         if sender is None:
             return
 
-        text = msg['text']
+        text = escape_user_id_vk_mask(msg['text'])
 
         attachments, media, documents, opened_documents, caption = get_message_attachments(msg)
         if text and caption:
