@@ -146,6 +146,9 @@ def escape_markdown(text: str) -> str:
 def escape_user_id_vk_mask(text):       #[id12134|@user] => @user
     return id_regex_mask.sub(r"\2", text)
 
+def quote_lines(text):
+    return "\n".join(f">{line}" for line in text.splitlines())
+
 def send_message_to_telegram(conversation_id, conversation_type, msg):
     destinations = get_channel_destinations(conversation_id)
     for bot_name, chat_ids in destinations.items():
@@ -269,7 +272,11 @@ def get_forward_messages_caption(msg):
         if forward_text!='':
             is_group = False
 
-        text += f">{forward_sender}: {forward_text}\n\n"
+        forward_text = f"{forward_sender}: {forward_text}"
+        forward_text = quote_lines(forward_text)
+        text += f"{forward_text}\n\n"
+
+        #text += f">{forward_sender}: {forward_text}\n\n"
 
     if is_group:
         text = f">Группа пересланных сообщений\n"
