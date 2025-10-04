@@ -145,6 +145,9 @@ def escape_markdown(text: str) -> str:
 
 def escape_user_id_vk_mask(text):       #[id12134|@user] => @user
     return id_regex_mask.sub(r"\2", text)
+    
+def truncate_forward_message_text(text)
+    return (text[:400] + '...') if len(text) > 350 else text
 
 def quote_lines(text):
     return "\n".join(f">{line}" for line in text.splitlines())
@@ -268,7 +271,7 @@ def get_forward_messages_caption(msg):
 
     for m in fwlist:
         forward_sender = escape_markdown(m['sender'])
-        forward_text = escape_markdown(m['text'])
+        forward_text = escape_markdown(truncate_forward_message_text(m['text']))
         if forward_text!='':
             is_group = False
 
