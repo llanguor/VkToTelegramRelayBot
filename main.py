@@ -130,6 +130,7 @@ def vk_thread():
                         if data['mark_messages_as_read']:
                             vk.messages.markAsRead(messages_ids=[msg['id']], peer_id=conversation_id)
                         set_last_received_message_id(conversation_id, msg['id'])
+                        remove_download_cache()
 
             time.sleep(data["pause_between_message_checks"])
 
@@ -162,103 +163,113 @@ def send_message_to_telegram(conversation_id, conversation_type, msg):
 
         send_message_to_bot(bot, bot_name, chat_ids, msg, conversation_type, conversation_id)
 
+
 def send_message_to_bot(bot, bot_name, subscribers, msg, conversation_type, conversation_id):
 
-    opened_documents = []
-    try:
+    if msg.get('action'):
+        return
 
-        if msg.get('action'):
-            return
+    sender = get_sender_name(msg)
+    if sender is None:
+        return
 
-        sender = get_sender_name(msg)
-        if sender is None:
-            return
+    text = escape_user_id_vk_mask(msg['text'])
 
-        text = escape_user_id_vk_mask(msg['text'])
+    attachments, media, documents, caption = get_message_attachments(msg)
+    if text and caption:
+        text += "\n"
+    text += caption
 
-        attachments, media, documents, opened_documents, caption = get_message_attachments(msg)
-        if text and caption:
-            text += "\n"
-        text += caption
-
-        text_caption = sender + ': ' + text
-        forward = get_forward_messages_caption(msg)
-
-        for sub in subscribers:
-            try:
-                text_to_send = text_caption
-                forward_to_send = forward
-
-                channel_name = ""
-                if data["add_group_name_to_message"] and conversation_type != "user" and get_subscribes_count(bot_name, sub) > 1:
-                    channel_name = get_channel_name_by_source(conversation_id) + " | "
-                    if channel_name is not None:
-                        text_to_send = channel_name + text_to_send
+    text_caption = sender + ': ' + text
+    forward = get_forward_messages_caption(msg)
 
 
-                if (len(text)!=0 and (
-                    len(media) == 0 and len(attachments) == 0 or
-                    len(media) != 0 and len(attachments) != 0)):
+    for sub in subscribers:
 
-                    if forward_to_send != "":
-                        text_to_send = escape_markdown(text_to_send) + "\n" + forward_to_send
-                        bot.send_message(sub, text_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
-                    else:
+        try:
+
+            text_to_send = text_caption
+            forward_to_send = forward
+
+            channel_name = ""
+            if data["add_group_name_to_message"] and conversation_type != "user" and get_subscribes_count(bot_name, sub) > 1:
+                channel_name = get_channel_name_by_source(conversation_id) + " | "
+                if channel_name is not None:
+                    text_to_send = channel_name + text_to_send
+
+
+            if (len(text)!=0 and (
+                len(media) == 0 and len(attachments) == 0 or
+                len(media) != 0 and len(attachments) != 0)):
+
+                if forward_to_send != "":
+                    text_to_send = escape_markdown(text_to_send) + "\n" + forward_to_send
+                    bot.send_message(sub, text_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
+                else:
+                    bot.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
+
+                text_to_send = ""
+                forward_to_send = ""
+
+            if len(media) != 0:
+                media[0].caption = text_to_send
+                bot.send_media_group(sub, media=media, disable_notification=data['disable_notification'])
+                text_to_send = ""
+
+            for attachment in attachments:
+
+                att_type = attachment.get('type')
+                att_link = attachment.get('link')
+
+                if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
+                    if text_to_send!="":
                         bot.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
+                        text_to_send = ""
+                    bot.send_document(sub, att_link, disable_notification=data['disable_notification'])
 
-                    text_to_send = ""
-                    forward_to_send = ""
-
-                if len(media) != 0:
-                    media[0].caption = text_to_send
-                    bot.send_media_group(sub, media=media, disable_notification=data['disable_notification'])
+                elif att_type == 'other':
+                    bot.send_message(sub, text_to_send+"\n" + att_link, disable_notification=data['disable_notification'])
                     text_to_send = ""
 
-                for attachment in attachments:
+                elif att_type == 'video':
+                    bot.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=data['disable_notification'])
+                    text_to_send = ""
 
-                    att_type = attachment.get('type')
-                    att_link = attachment.get('link')
+                elif att_type == 'graffiti':
+                    bot.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=data['disable_notification'])
+                    text_to_send = ""
 
-                    if att_type == 'doc' or att_type == 'gif' or att_type == 'audio_message':
-                        if text_to_send!="":
-                            bot.send_message(sub, text_to_send, disable_notification=data['disable_notification'])
-                            text_to_send = ""
-                        bot.send_document(sub, att_link, disable_notification=data['disable_notification'])
+            if len(documents) != 0:
 
-                    elif att_type == 'other':
-                        bot.send_message(sub, text_to_send+"\n" + att_link, disable_notification=data['disable_notification'])
-                        text_to_send = ""
+                #Telegam reads the file to the end when sending it.
+                # This prevents it from being sent again.
+                # That's why it's here, not inside the function get_message_attachments
 
-                    elif att_type == 'video':
-                        bot.send_message(sub, text_to_send+"\nВидео\n" + att_link, disable_notification=data['disable_notification'])
-                        text_to_send = ""
+                opened_documents = []
+                documents_to_send = []
+                try:
+                    for file_path in documents:
+                        document = open(file_path, 'rb')
+                        opened_documents.append(document)
+                        documents_to_send.append(InputMediaDocument(document))
+                    bot.send_media_group(sub, media=documents_to_send, disable_notification=data['disable_notification'])
 
-                    elif att_type == 'graffiti':
-                        bot.send_message(sub, text_to_send+"\nГраффити\n " +att_link, disable_notification=data['disable_notification'])
-                        text_to_send = ""
+                finally:
+                    for document in opened_documents:
+                        try:
+                            document.close()
+                        except Exception as e:
+                            logger.error(f"Error closing file {f}: {e}")
 
-                if len(documents) != 0:
-                    bot.send_media_group(sub, media=documents, disable_notification=data['disable_notification'])
 
-                if forward_to_send!="":
-                    forward_to_send = escape_markdown(channel_name + sender) + ':\n' + forward_to_send
-                    bot.send_message(sub, forward_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
+            if forward_to_send!="":
+                forward_to_send = escape_markdown(channel_name + sender) + ':\n' + forward_to_send
+                bot.send_message(sub, forward_to_send, parse_mode='MarkdownV2', disable_notification=data['disable_notification'])
 
-                logger.info(f"Send message {msg['text']} to {sub} from bot {bot_name}")
+            logger.info(f"Send message {msg['text']} to {sub} from bot {bot_name}")
 
-            except Exception as ex:
-                logger.error(f"Error while sending {msg['text']} to {sub}: {ex}")
-
-    finally:
-
-        for f in opened_documents:
-            try:
-                f.close()
-            except Exception as e:
-                logger.error(f"Error closing file {f}: {e}")
-
-        opened_documents.clear()
-        remove_download_cache()
+        except Exception as ex:
+            logger.error(f"Error while sending {msg['text']} to {sub}: {ex}")
 
 
 def get_forward_messages_caption(msg):
@@ -328,7 +339,6 @@ def get_message_attachments(msg):
     media = []
     documents = []
     caption = ""
-    opened_documents = []
 
     attachments = None
 
@@ -350,10 +360,9 @@ def get_message_attachments(msg):
 
             if (doc_type in [1, 2, 5, 6, 7, 8]) and attachment.get('url'):
                 file_path = download_file(attachment['url'], attachment['title'])
+
                 if file_path:
-                    document = open(file_path, 'rb')
-                    opened_documents.append(document)
-                    documents.append(InputMediaDocument(document))
+                    documents.append(file_path)
                     continue
 
             attachments = attachment['url']
@@ -414,7 +423,7 @@ def get_message_attachments(msg):
         if attachments is not None:
             attach_list.append({'type': att_type, 'link': attachments})
 
-    return attach_list, media, documents, opened_documents, caption
+    return attach_list, media, documents, caption
 
 
 def remove_download_cache():
