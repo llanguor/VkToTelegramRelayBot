@@ -146,7 +146,7 @@ def escape_markdown(text: str) -> str:
 def escape_user_id_vk_mask(text):       #[id12134|@user] => @user
     return id_regex_mask.sub(r"\2", text)
     
-def truncate_forward_message_text(text)
+def truncate_forward_message_text(text);
     return (text[:400] + '...') if len(text) > 350 else text
 
 def quote_lines(text):
